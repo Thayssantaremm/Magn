@@ -1,0 +1,284 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  MANAGER
+  MEMBER
+  VIEWER
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships Membership[]
+  sessions    Session[]
+  auditLogs   AuditLog[] @relation("AuditByUser")
+}
+
+model Workspace {
+  id        String   @id @default(cuid())
+  name      String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships Membership[]
+  pages       Page[]
+  contacts    Contact[]
+  deals       Deal[]
+  activities  Activity[]
+  plannerEvents PlannerEvent[]
+  conversations Conversation[]
+  messages    Message[]
+  automationRules AutomationRule[]
+  automationLogs  AutomationLog[]
+  auditLogs   AuditLog[]
+}
+
+model Membership {
+  id          String   @id @default(cuid())
+  userId      String
+  workspaceId String
+  role        Role     @default(MEMBER)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User      @relation(fields: [userId], references: [id])
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+
+  @@unique([userId, workspaceId])
+  @@index([workspaceId])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([expiresAt])
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  workspaceId String
+  actorUserId String?
+  action      String
+  entity      String
+  entityId    String?
+  ip          String?
+  meta        Json?
+
+  createdAt DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+  actor     User?     @relation("AuditByUser", fields: [actorUserId], references: [id])
+
+  @@index([workspaceId])
+  @@index([createdAt])
+}
+
+model Page {
+  id          String   @id @default(cuid())
+  workspaceId String
+  parentId    String?
+  title       String   @default("Untitled")
+  icon        String?
+  coverUrl    String?
+  content     Json     @default("[]")
+  isDeleted   Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+  parent    Page?    @relation("PageToPage", fields: [parentId], references: [id])
+  children  Page[]   @relation("PageToPage")
+
+  @@index([workspaceId])
+  @@index([parentId])
+  @@index([updatedAt])
+}
+
+model Contact {
+  id          String   @id @default(cuid())
+  workspaceId String
+
+  name        String?
+  phoneEnc    String?
+  phoneHash   String?  @unique
+  instagramEnc String?
+  instagramHash String? @unique
+  emailEnc    String?
+  emailHash   String?  @unique
+
+  tags        String[] @default([])
+  source      String?
+  notesEnc    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+
+  deals        Deal[]
+  conversations Conversation[]
+
+  @@index([workspaceId])
+}
+
+model Deal {
+  id          String   @id @default(cuid())
+  workspaceId String
+  contactId   String
+  title       String
+  stage       String   @default("Novo lead")
+  value       Int?
+  owner       String?
+  nextStep    DateTime?
+  notes       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+  contact   Contact  @relation(fields: [contactId], references: [id])
+
+  @@index([workspaceId])
+  @@index([stage])
+}
+
+model Activity {
+  id          String   @id @default(cuid())
+  workspaceId String
+  contactId   String?
+  dealId      String?
+  type        String
+  title       String
+  dueAt       DateTime?
+  done        Boolean  @default(false)
+  notes       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+  contact   Contact? @relation(fields: [contactId], references: [id])
+
+  @@index([workspaceId])
+  @@index([done])
+  @@index([dueAt])
+}
+
+model PlannerEvent {
+  id          String   @id @default(cuid())
+  workspaceId String
+  title       String
+  start       DateTime
+  end         DateTime?
+  allDay      Boolean  @default(false)
+  notes       String?
+
+  contactId   String?
+  dealId      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+
+  @@index([workspaceId])
+  @@index([start])
+}
+
+model Conversation {
+  id            String   @id @default(cuid())
+  workspaceId   String
+  channel       String
+  externalId    String
+  contactId     String?
+  displayName   String?
+  lastMessageAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+  contact   Contact? @relation(fields: [contactId], references: [id])
+  messages  Message[]
+
+  @@unique([workspaceId, externalId])
+  @@index([workspaceId])
+  @@index([lastMessageAt])
+}
+
+model Message {
+  id             String   @id @default(cuid())
+  workspaceId     String
+  conversationId String
+  direction      String
+  textEnc        String?
+  externalId     String?
+  raw            Json?
+  sentAt         DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+
+  @@unique([workspaceId, externalId])
+  @@index([workspaceId])
+  @@index([sentAt])
+}
+
+model AutomationRule {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  enabled     Boolean  @default(true)
+
+  trigger     String
+  filter      Json?
+  actions     Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+
+  @@index([workspaceId])
+  @@index([trigger])
+}
+
+model AutomationLog {
+  id          String   @id @default(cuid())
+  workspaceId String
+  ruleId      String?
+  status      String
+  input       Json?
+  output      Json?
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+
+  @@index([workspaceId])
+  @@index([createdAt])
+}
